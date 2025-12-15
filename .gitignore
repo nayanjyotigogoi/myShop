@@ -1,0 +1,77 @@
+############################
+# OS & Editor
+############################
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+.vscode/
+.idea/
+
+############################
+# Node / Next.js
+############################
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+############################
+# Environment files
+############################
+.env
+.env.*
+!.env.example
+
+############################
+# Laravel
+############################
+/vendor/
+/storage/*.key
+/storage/logs/
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/views/
+bootstrap/cache/
+
+############################
+# Laravel Mix / Vite
+############################
+public/hot
+public/build
+mix-manifest.json
+
+############################
+# Database
+############################
+*.sqlite
+*.db
+
+############################
+# Testing
+############################
+.phpunit.result.cache
+.phpunit.cache
+coverage/
+
+############################
+# Temporary / Cache
+############################
+.cache/
+.tmp/
+.temp/
+
+############################
+# Build & IDE junk
+############################
+*.log
+*.pid
+*.seed
+*.tmp
