@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { authFetch } from "@/lib/authFetch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { FileText, Download, Printer } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -260,6 +261,49 @@ export default function SalesPage() {
     await loadSales()
   }
 
+  /* ============ sales search =================*/
+  const [search, setSearch] = useState("")
+  const [fromDate, setFromDate] = useState("")
+  const [toDate, setToDate] = useState("")
+
+  const formatDateTime = (date: string) =>
+    new Date(date).toLocaleString("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    })
+
+  const filteredSales = sales.filter((s) => {
+  const saleDate = new Date(s.sale_date)
+
+  // DATE RANGE FILTER
+  if (fromDate && saleDate < new Date(fromDate)) return false
+  if (toDate && saleDate > new Date(toDate + "T23:59:59")) return false
+
+  if (search) {
+    const term = search.toLowerCase().trim()
+
+    const billNoMatch =
+      s.bill_number?.toLowerCase().includes(term)
+
+    const invoiceNoMatch =
+      s.invoices?.some((inv: any) =>
+        inv.invoice_number?.toLowerCase().includes(term)
+      ) ?? false
+
+    const searchAmount = Number(term.replace(/[^0-9.]/g, ""))
+
+    const amountMatch =
+      !isNaN(searchAmount) &&
+      Number(s.total) >= searchAmount
+
+    return billNoMatch || invoiceNoMatch || amountMatch
+  }
+
+  return true
+})
+
+
+
   /* ================= UI ================= */
 
   const formatTime = (iso: string) =>
@@ -384,159 +428,262 @@ export default function SalesPage() {
       </div>
 
       {/* SALES HISTORY */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Sales</CardTitle>
-        </CardHeader>
+<Card>
+  <CardHeader>
+    <CardTitle>Recent Sales</CardTitle>
+  </CardHeader>
 
-        <CardContent>
-          {loadingSales ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : sales.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No sales yet</p>
-          ) : (
-            sales.map((s) => {
-              const isExpanded = expandedSaleId === s.id
-              const details = saleDetails[s.id]
+  <CardContent>
 
-              const canReturn =
-                details?.items?.some((item: any) => item.remaining_qty > 0) ?? false
-              return (
-                <div key={s.id} className="border-b">
-                  {/* Summary row */}
-                  <button
-                    onClick={() => toggleSaleDetails(s.id)}
-                    className="w-full flex justify-between items-center py-3 text-left hover:bg-muted px-2"
-                  >
-                    <span className="text-sm">{formatTime(s.sale_date)}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium">
-                        ₹{Number(s.total).toLocaleString()}
+    {/* SEARCH & DATE FILTER */}
+    <div className="mb-4 grid grid-cols-1 sm:grid-cols-4 gap-2">
+      <input
+        type="text"
+        placeholder="Search bill / amount"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="border rounded px-2 py-1 text-sm"
+      />
+
+      <input
+        type="date"
+        value={fromDate}
+        onChange={(e) => setFromDate(e.target.value)}
+        className="border rounded px-2 py-1 text-sm"
+      />
+
+      <input
+        type="date"
+        value={toDate}
+        onChange={(e) => setToDate(e.target.value)}
+        className="border rounded px-2 py-1 text-sm"
+      />
+
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          setSearch("")
+          setFromDate("")
+          setToDate("")
+        }}
+      >
+        Clear
+      </Button>
+    </div>
+
+    {loadingSales ? (
+      <p className="text-sm text-muted-foreground">Loading…</p>
+    ) : filteredSales.length === 0 ? (
+      <p className="text-sm text-muted-foreground">No sales found</p>
+    ) : (
+      filteredSales.map((s) => {
+        const isExpanded = expandedSaleId === s.id
+        const details = saleDetails[s.id]
+
+        const canReturn =
+          details?.items?.some(
+            (item: any) => item.remaining_qty > 0
+          ) ?? false
+
+        return (
+          <div key={s.id} className="border-b">
+
+            {/* SUMMARY ROW */}
+            <button
+              onClick={() => toggleSaleDetails(s.id)}
+              className="w-full flex justify-between items-center py-3 text-left hover:bg-muted px-2"
+            >
+              <span className="text-sm">
+                {formatDateTime(s.sale_date)}
+              </span>
+
+              <div className="flex items-center gap-3">
+                <span className="font-medium">
+                  ₹{Number(s.total).toLocaleString()}
+                </span>
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform ${
+                    isExpanded ? "rotate-180" : ""
+                  }`}
+                />
+              </div>
+            </button>
+
+            {/* EXPANDED DETAILS */}
+            {isExpanded && (
+              <div className="bg-muted/40 px-3 py-3">
+
+                {!details ? (
+                  <p className="text-xs text-muted-foreground">
+                    Loading bill…
+                  </p>
+                ) : (
+                  <>
+                    {/* HEADER */}
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-semibold">
+                        Bill Items
                       </span>
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform ${
-                          isExpanded ? "rotate-180" : ""
-                        }`}
-                      />
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!canReturn}
+                        onClick={() => setActiveReturnSale(details)}
+                      >
+                        {canReturn ? "Return" : "Fully Returned"}
+                      </Button>
                     </div>
-                  </button>
 
-                  {/* Expanded bill */}
-                  {isExpanded && (
-                    <div className="bg-muted/40 px-3 py-3">
-                      {!details ? (
-                        <p className="text-xs text-muted-foreground">
-                          Loading bill…
-                        </p>
-                      ) : (
-                        <>
-                          {/* Header */}
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-semibold">Bill Items</span>
+                    {/* ITEMS */}
+                    <div className="space-y-1 mt-2">
+                      {details.items?.map((item: any) => (
+                        <div
+                          key={item.id}
+                          className="flex justify-between text-sm"
+                        >
+                          <span>
+                            {item.product?.name} × {item.quantity}
+                          </span>
+                          <span>
+                            ₹{Number(item.line_total).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
 
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!canReturn}
-                              onClick={() => setActiveReturnSale(details)}
-                            >
-                              {canReturn ? "Return" : "Fully Returned"}
-                            </Button>
-                          </div>
+                    {/* RETURN HISTORY */}
+                    {details.returns && details.returns.length > 0 && (
+                      <div className="mt-4 border-t pt-3 space-y-2">
+                        <div className="text-xs font-semibold text-muted-foreground">
+                          Return History
+                        </div>
 
-                          <div className="space-y-1">
-                            {details.items?.map((item: any) => (
-                              <div
-                                key={item.id}
-                                className="flex justify-between text-sm"
-                              >
-                                <span>
-                                  {item.product?.name} × {item.quantity}
-                                </span>
-                                <span>
-                                  ₹{(Number(item.unit_price) * item.quantity).toLocaleString()}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-
-                          
-                          {/* RETURN HISTORY */}
-                            {details.returns && details.returns.length > 0 && (
-                              <div className="mt-4 border-t pt-3 space-y-2">
-                                <div className="text-xs font-semibold text-muted-foreground">
-                                  Return History
-                                </div>
-
-                                {details.returns.map((ret: any) => (
-                                  <div
-                                    key={ret.id}
-                                    className="rounded border bg-background p-2 text-sm"
-                                  >
-                                    <div className="flex justify-between font-medium">
-                                      <span>
-                                        {new Date(ret.return_date).toLocaleDateString()}
-                                      </span>
-                                      <span className="text-destructive">
-                                        - ₹{Number(ret.refund_amount).toLocaleString()}
-                                      </span>
-                                    </div>
-
-                                    <div className="mt-1 space-y-1 text-xs text-muted-foreground">
-                                      {ret.items.map((ri: any) => (
-                                        <div
-                                          key={ri.id}
-                                          className="flex justify-between"
-                                        >
-                                          <span>
-                                            {ri.product?.name} × {ri.quantity}
-                                          </span>
-                                          <span>
-                                            ₹{Number(ri.line_total).toLocaleString()}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-
-                          <div className="border-t mt-2 pt-2 text-sm space-y-1">
-                            <div className="flex justify-between">
-                              <span>Gross Total</span>
-                              <span>₹{Number(details.total).toLocaleString()}</span>
-                            </div>
-
-                            {Number(details.refund_total) > 0 && (
-                              <div className="flex justify-between text-destructive">
-                                <span>Refunded</span>
-                                <span>
-                                  - ₹{Number(details.refund_total).toLocaleString()}
-                                </span>
-                              </div>
-                            )}
-
-                            <div className="flex justify-between font-semibold">
-                              <span>Net Total</span>
+                        {details.returns.map((ret: any) => (
+                          <div
+                            key={ret.id}
+                            className="rounded border bg-background p-2 text-sm"
+                          >
+                            <div className="flex justify-between font-medium">
                               <span>
-                                ₹{Number(details.net_total).toLocaleString()}
-                              </span>                              
+                                {new Date(ret.return_date).toLocaleDateString()}
+                              </span>
+                              <span className="text-destructive">
+                                - ₹{Number(ret.refund_amount).toLocaleString()}
+                              </span>
                             </div>
-                            
-                          </div>
 
-                        </>
+                            <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+                              {ret.items.map((ri: any) => (
+                                <div
+                                  key={ri.id}
+                                  className="flex justify-between"
+                                >
+                                  <span>
+                                    {ri.product?.name} × {ri.quantity}
+                                  </span>
+                                  <span>
+                                    ₹{Number(ri.line_total).toLocaleString()}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* TOTALS */}
+                    <div className="border-t mt-3 pt-2 text-sm space-y-1">
+                      <div className="flex justify-between">
+                        <span>Gross Total</span>
+                        <span>
+                          ₹{Number(details.total).toLocaleString()}
+                        </span>
+                      </div>
+
+                      {Number(details.refund_total) > 0 && (
+                        <div className="flex justify-between text-destructive">
+                          <span>Refunded</span>
+                          <span>
+                            - ₹{Number(details.refund_total).toLocaleString()}
+                          </span>
+                        </div>
                       )}
+
+                      <div className="flex justify-between font-semibold">
+                        <span>Net Total</span>
+                        <span>
+                          ₹{Number(details.net_total).toLocaleString()}
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              )
-            })
-          )}
-        </CardContent>
-      </Card>
+
+                    {/* INVOICES */}
+                    {details.invoices?.length > 0 && (
+                      <div className="mt-3 border-t pt-2 space-y-2">
+                        <div className="text-xs font-semibold text-muted-foreground">
+                          Invoices
+                        </div>
+
+                        {details.invoices.map((inv: any) => (
+                          <div
+                            key={inv.id}
+                            className="flex items-center justify-between text-sm"
+                          >
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-muted-foreground" />
+                              <span className="font-medium">
+                                {inv.invoice_number}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                ({inv.invoice_type === "sale" ? "Sale" : "Return"})
+                              </span>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() =>
+                                  window.open(
+                                    `${process.env.NEXT_PUBLIC_API_BASE_URL}/invoices/${inv.id}/print`,
+                                    "_blank"
+                                  )
+                                }
+                              >
+                                <Printer className="w-4 h-4" />
+                              </Button>
+
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() =>
+                                  window.open(
+                                    `${process.env.NEXT_PUBLIC_API_BASE_URL}/invoices/${inv.id}/download`,
+                                    "_blank"
+                                  )
+                                }
+                              >
+                                <Download className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })
+    )}
+  </CardContent>
+</Card>
+
       
       <SaleReturnModal
         open={!!activeReturnSale}
