@@ -2,7 +2,16 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, BarChart3, Settings, LogOut } from "lucide-react"
+import {
+  LayoutDashboard,
+  Package,
+  ShoppingCart,
+  TrendingUp,
+  BarChart3,
+  Settings,
+  LogOut,
+  Users,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Sidebar,
@@ -19,6 +28,10 @@ const navigationItems = [
   { href: "/products", label: "Products", icon: Package },
   { href: "/purchases", label: "Purchases", icon: ShoppingCart },
   { href: "/sales", label: "Sales", icon: TrendingUp },
+
+  // ✅ ADD THIS
+  { href: "/customers", label: "Customers", icon: Users },
+
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
@@ -27,10 +40,10 @@ export default function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
 
-  const handleLogout = () => {
-    localStorage.removeItem("user_logged_in")
-    router.push("/")
-  }
+const handleLogout = () => {
+  localStorage.removeItem("token")
+  router.push("/")
+}
 
   return (
     <Sidebar>
@@ -48,9 +61,14 @@ export default function AppSidebar() {
           {navigationItems.map((item) => {
             const Icon = item.icon
             const isActive = pathname.startsWith(item.href)
+
             return (
               <SidebarMenuItem key={item.href}>
-                <SidebarMenuButton asChild isActive={isActive} className="text-base h-10">
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive}
+                  className="text-base h-10"
+                >
                   <Link href={item.href}>
                     <Icon className="w-5 h-5" />
                     <span>{item.label}</span>
@@ -63,7 +81,11 @@ export default function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t p-4">
-        <Button variant="outline" className="w-full justify-start text-base h-10 bg-transparent" onClick={handleLogout}>
+        <Button
+          variant="outline"
+          className="w-full justify-start text-base h-10 bg-transparent"
+          onClick={handleLogout}
+        >
           <LogOut className="w-5 h-5 mr-2" />
           Logout
         </Button>

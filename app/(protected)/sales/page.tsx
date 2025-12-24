@@ -1,30 +1,15 @@
 "use client"
 
-import { ChevronDown } from "lucide-react"
 import { useEffect, useState } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { authFetch } from "@/lib/authFetch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { FileText, Download, Printer } from "lucide-react"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Card, CardContent, CardHeader, CardTitle, } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableRow, } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Search, Plus, Minus, Trash2 } from "lucide-react"
-import SaleReturnModal from "@/components/sale-return-modal"
-
+import { Plus, Minus, Trash2, User } from "lucide-react"
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api"
@@ -37,15 +22,6 @@ type BackendProduct = {
   size: string | null
   sell_price: string
   current_stock: number
-}
-
-type BackendSale = {
-  id: number
-  sale_date: string
-  subtotal: string
-  discount: string
-  total: string
-  items_count: number
 }
 
 type POSProduct = {
@@ -63,111 +39,63 @@ type CartItem = POSProduct & {
 
 /* ================= PAGE ================= */
 
-export default function SalesPage() {
-  const [searchTerm, setSearchTerm] = useState("")
+export default function SalesPOSPage() {
+  const pathname = usePathname()
+
   const [products, setProducts] = useState<POSProduct[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
+  const [search, setSearch] = useState("")
   const [discount, setDiscount] = useState(0)
+
+  const [paidNow, setPaidNow] = useState(0)
+  const [paymentMethod, setPaymentMethod] = useState("cash")
+
+  const [customerId, setCustomerId] = useState<number | null>(null)
+  const [customers, setCustomers] = useState<any[]>([])
+
   const [isSaving, setIsSaving] = useState(false)
-  const [sales, setSales] = useState<BackendSale[]>([])
-  const [loadingProducts, setLoadingProducts] = useState(false)
-  const [loadingSales, setLoadingSales] = useState(false)
-
-  const [expandedSaleId, setExpandedSaleId] = useState<number | null>(null)
-  const [saleDetails, setSaleDetails] = useState<Record<number, any>>({})
-
-  //Return
-  const [activeReturnSale, setActiveReturnSale] = useState<any | null>(null)
-  
-
-  const toggleSaleDetails = async (saleId: number) => {
-    if (expandedSaleId === saleId) {
-      setExpandedSaleId(null)
-      return
-    }
-
-    if (!saleDetails[saleId]) {
-      const res = await authFetch(`${API_BASE_URL}/sales/${saleId}`)
-      const data = await res.json()
-
-      setSaleDetails((prev) => ({
-        ...prev,
-        [saleId]: data,
-      }))
-    }
-
-    setExpandedSaleId(saleId)
-  }
-
-
 
   /* -------- LOAD PRODUCTS -------- */
   const loadProducts = async () => {
-    try {
-      setLoadingProducts(true)
-      const res = await authFetch(`${API_BASE_URL}/products`)
-      const data: BackendProduct[] = await res.json()
-
-      setProducts(
-        data.map((p) => ({
-          id: p.id,
-          name: p.name,
-          size: p.size || "",
-          stock: p.current_stock,
-          mrp: Number(p.sell_price),
-        }))
-      )
-    } catch (err) {
-      console.error(err)
-      alert("Failed to load products")
-    } finally {
-      setLoadingProducts(false)
-    }
+    const res = await authFetch(`${API_BASE_URL}/products`)
+    const data: BackendProduct[] = await res.json()
+    setProducts(
+      data.map((p) => ({
+        id: p.id,
+        name: p.name,
+        size: p.size || "",
+        stock: p.current_stock,
+        mrp: Number(p.sell_price),
+      }))
+    )
   }
 
-  /* -------- LOAD SALES -------- */
-  const loadSales = async () => {
-    try {
-      setLoadingSales(true)
-      const res = await authFetch(`${API_BASE_URL}/sales`)
-      const data: BackendSale[] = await res.json()
-      setSales(data)
-    } catch (err) {
-      console.error(err)
-      alert("Failed to load sales")
-    } finally {
-      setLoadingSales(false)
-    }
+  /* -------- LOAD CUSTOMERS -------- */
+  const loadCustomers = async () => {
+    const res = await authFetch(`${API_BASE_URL}/customers`)
+    const json = await res.json()
+    setCustomers(Array.isArray(json.data) ? json.data : json)
   }
 
   useEffect(() => {
     loadProducts()
-    loadSales()
+    loadCustomers()
   }, [])
 
-  /* ================= CART LOGIC ================= */
-  const filteredProducts = products.filter((p) =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  /* ================= CART ================= */
 
   const addToCart = (product: POSProduct) => {
     const existing = cart.find((i) => i.id === product.id)
-
     if (existing) {
-      if (existing.quantity >= product.stock) {
-        alert("Not enough stock")
-        return
-      }
+      if (existing.quantity >= product.stock) return
       setCart(
         cart.map((i) =>
-          i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
+          i.id === product.id
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
         )
       )
     } else {
-      if (product.stock <= 0) {
-        alert("Out of stock")
-        return
-      }
       setCart([
         ...cart,
         { ...product, quantity: 1, sellingPrice: product.mrp },
@@ -180,17 +108,19 @@ export default function SalesPage() {
       setCart(cart.filter((i) => i.id !== id))
       return
     }
-
-    const product = products.find((p) => p.id === id)
-    if (!product || qty > product.stock) return
-
-    setCart(cart.map((i) => (i.id === id ? { ...i, quantity: qty } : i)))
+    setCart(
+      cart.map((i) =>
+        i.id === id ? { ...i, quantity: qty } : i
+      )
+    )
   }
 
   const updateSellingPrice = (id: number, price: number) => {
     setCart(
       cart.map((i) =>
-        i.id === id ? { ...i, sellingPrice: Math.max(0, price) } : i
+        i.id === id
+          ? { ...i, sellingPrice: Math.max(0, price) }
+          : i
       )
     )
   }
@@ -199,119 +129,102 @@ export default function SalesPage() {
     (sum, i) => sum + i.sellingPrice * i.quantity,
     0
   )
+
   const finalAmount = Math.max(0, subtotal - discount)
+
+  
 
   /* ================= SAVE SALE ================= */
 
   const handleSaveSale = async () => {
     if (!cart.length) return
 
-    try {
-      setIsSaving(true)
-
-      const payload = {
-        sale_date: new Date().toISOString(),
-        discount,
-        items: cart.map((i) => ({
-          product_id: i.id,
-          quantity: i.quantity,
-          unit_price: i.sellingPrice,
-        })),
-      }
-
-      const res = await authFetch(`${API_BASE_URL}/sales`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || "Failed to save sale")
-      }
-
-      setCart([])
-      setDiscount(0)
-      await Promise.all([loadSales(), loadProducts()])
-    } catch (err: any) {
-      console.error(err)
-      alert(err.message || "Error saving sale")
-    } finally {
-      setIsSaving(false)
-    }
-  }
-  /* ================= Return Submit ================= */
-
-  const handleReturnSubmit = async (payload: any) => {
-    const res = await authFetch(
-      `${API_BASE_URL}/sales/${activeReturnSale.id}/returns`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    )
-
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(text || "Return failed")
+    if (paidNow > finalAmount) {
+      alert("Paid amount cannot exceed bill total")
+      return
     }
 
-    // reload sales to reflect returns
-    await loadSales()
-  }
+    if (paidNow < finalAmount && !customerId) {
+      alert("Please select a customer for credit sale")
+      return
+    }
 
-  /* ============ sales search =================*/
-  const [search, setSearch] = useState("")
-  const [fromDate, setFromDate] = useState("")
-  const [toDate, setToDate] = useState("")
+    setIsSaving(true)
 
-  const formatDateTime = (date: string) =>
-    new Date(date).toLocaleString("en-IN", {
-      dateStyle: "medium",
-      timeStyle: "short",
+    const payload = {
+      sale_date: new Date().toISOString(),
+      customer_id: customerId,
+      paid_now: paidNow,
+      payment_method: paidNow > 0 ? paymentMethod : null,
+      discount,
+      items: cart.map((i) => ({
+        product_id: i.id,
+        quantity: i.quantity,
+        unit_price: i.sellingPrice,
+      })),
+    }
+
+    await authFetch(`${API_BASE_URL}/sales`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     })
 
-  const filteredSales = sales.filter((s) => {
-  const saleDate = new Date(s.sale_date)
+    setCart([])
+    setDiscount(0)
+    setPaidNow(0)
+    setCustomerId(null)
 
-  // DATE RANGE FILTER
-  if (fromDate && saleDate < new Date(fromDate)) return false
-  if (toDate && saleDate > new Date(toDate + "T23:59:59")) return false
-
-  if (search) {
-    const term = search.toLowerCase().trim()
-
-    const billNoMatch =
-      s.bill_number?.toLowerCase().includes(term)
-
-    const invoiceNoMatch =
-      s.invoices?.some((inv: any) =>
-        inv.invoice_number?.toLowerCase().includes(term)
-      ) ?? false
-
-    const searchAmount = Number(term.replace(/[^0-9.]/g, ""))
-
-    const amountMatch =
-      !isNaN(searchAmount) &&
-      Number(s.total) >= searchAmount
-
-    return billNoMatch || invoiceNoMatch || amountMatch
+    await loadProducts()
+    setIsSaving(false)
   }
-
-  return true
-})
-
-
 
   /* ================= UI ================= */
 
-  const formatTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  const filteredProducts = products.filter((p) =>
+    p.name.toLowerCase().includes(search.toLowerCase())
+  )
 
+  const selectedCustomer =
+    customers.find((c) => c.id === customerId) || null
+// ================= DUE CALCULATIONS (ADDED) =================
+const previousDue = Number(selectedCustomer?.due_balance || 0)
+
+// Due only for THIS bill
+const billDue = Math.max(0, finalAmount - paidNow)
+
+// Total customer due AFTER this sale
+const totalDueAfterSale =
+  customerId ? previousDue + billDue : billDue
+  
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Point of Sale</h1>
+      {/* HEADER + NAV */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Sales</h1>
+
+        <div className="flex gap-2">
+          <Link href="/sales">
+            <Button
+              size="sm"
+              variant={pathname === "/sales" ? "default" : "outline"}
+            >
+              POS
+            </Button>
+          </Link>
+
+          <Link href="/sales/history">
+            <Button
+              size="sm"
+              variant={
+                pathname === "/sales/history" ? "default" : "outline"
+              }
+            >
+              History
+            </Button>
+          </Link>
+        </div>
+      </div>
 
       <div className="grid lg:grid-cols-5 gap-6">
         {/* PRODUCTS */}
@@ -320,35 +233,46 @@ export default function SalesPage() {
             <CardHeader>
               <CardTitle>Products</CardTitle>
             </CardHeader>
-            <CardContent className="max-h-[350px] overflow-y-auto">
+
+            <CardContent className="p-3">
               <Input
-                placeholder="Search..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="mb-4"
+                placeholder="Search product..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="mb-3"
               />
 
-              {loadingProducts ? (
-                <p className="text-sm text-muted-foreground">Loading…</p>
-              ) : filteredProducts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No products found</p>
-              ) : (
-                filteredProducts.map((p) => (
-                  <div
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[420px] overflow-y-auto pr-1">
+                {filteredProducts.map((p) => (
+                  <button
                     key={p.id}
                     onClick={() => addToCart(p)}
-                    className="p-3 border rounded mb-2 cursor-pointer hover:bg-muted"
+                    className="group border rounded-lg p-3 text-left hover:border-primary hover:bg-muted transition"
                   >
-                    <div className="flex justify-between">
-                      <span>{p.name}</span>
-                      <span>₹{p.mrp}</span>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="font-medium">{p.name}</div>
+                        {p.size && (
+                          <div className="text-xs text-muted-foreground">
+                            Size: {p.size}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-right">
+                        <div className="font-semibold">₹{p.mrp}</div>
+                        <Badge
+                          variant={
+                            p.stock > 5 ? "secondary" : "destructive"
+                          }
+                        >
+                          {p.stock} left
+                        </Badge>
+                      </div>
                     </div>
-                    <Badge variant={p.stock > 5 ? "secondary" : "destructive"}>
-                      {p.stock} left
-                    </Badge>
-                  </div>
-                ))
-              )}
+                  </button>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -359,40 +283,112 @@ export default function SalesPage() {
             <CardHeader>
               <CardTitle>Bill</CardTitle>
             </CardHeader>
-            <CardContent>
+
+            <CardContent className="p-0">
+              {/* CUSTOMER */}
+              <div className="border-b p-4 space-y-2">
+                <div className="flex items-center gap-2 font-medium">
+                  <User className="w-4 h-4" />
+                  Customer
+                </div>
+
+                <select
+                  value={customerId ?? ""}
+                  onChange={(e) =>
+                    setCustomerId(
+                      e.target.value ? Number(e.target.value) : null
+                    )
+                  }
+                  className="w-full border rounded px-2 py-1 text-sm"
+                >
+                  <option value="">Walk-in Customer</option>
+
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                      {c.phone ? ` (${c.phone})` : ""}
+                    </option>
+                  ))}
+                </select>
+
+                {selectedCustomer && (
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <div>
+                      Previous Due: ₹{previousDue.toLocaleString()}
+                    </div>
+
+                    {billDue > 0 && (
+                      <div className="font-medium text-destructive">
+                        Total Due After Sale: ₹{totalDueAfterSale.toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              </div>
+
+              {/* ITEMS */}
               {cart.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No items</p>
+                <div className="text-center py-16 text-sm text-muted-foreground">
+                  Add products to start billing
+                </div>
               ) : (
                 <Table>
                   <TableBody>
                     {cart.map((i) => (
                       <TableRow key={i.id}>
                         <TableCell>{i.name}</TableCell>
-                        <TableCell>
+
+                        <TableCell className="w-[110px]">
                           <Input
                             type="number"
                             value={i.sellingPrice}
                             onChange={(e) =>
-                              updateSellingPrice(i.id, Number(e.target.value))
+                              updateSellingPrice(
+                                i.id,
+                                Number(e.target.value)
+                              )
                             }
-                            className="w-27"
+                            className="h-8"
                           />
                         </TableCell>
-                        <TableCell>
-                          <Button onClick={() => updateQuantity(i.id, i.quantity - 1)}>
-                            <Minus />
-                          </Button>
-                          {i.quantity}
-                          <Button onClick={() => updateQuantity(i.id, i.quantity + 1)}>
-                            <Plus />
-                          </Button>
+
+                        <TableCell className="w-[140px]">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() =>
+                                updateQuantity(i.id, i.quantity - 1)
+                              }
+                            >
+                              <Minus className="w-4 h-4" />
+                            </Button>
+
+                            <span className="w-6 text-center">
+                              {i.quantity}
+                            </span>
+
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() =>
+                                updateQuantity(i.id, i.quantity + 1)
+                              }
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
-                        <TableCell>
-                          ₹{(i.sellingPrice * i.quantity).toLocaleString()}
+
+                        <TableCell className="text-right font-semibold">
+                          ₹
+                          {(i.sellingPrice * i.quantity).toLocaleString()}
                         </TableCell>
-                        <TableCell>
+
+                        <TableCell className="w-[40px] text-right">
                           <Trash2
-                            className="cursor-pointer text-destructive"
+                            className="w-4 h-4 text-destructive cursor-pointer"
                             onClick={() =>
                               setCart(cart.filter((c) => c.id !== i.id))
                             }
@@ -404,18 +400,94 @@ export default function SalesPage() {
                 </Table>
               )}
 
-              <div className="mt-4">
-                <Input
-                  type="number"
-                  placeholder="Discount"
-                  value={discount}
-                  onChange={(e) => setDiscount(Number(e.target.value || 0))}
-                />
-                <div className="mt-2 font-bold">
-                  Total: ₹{finalAmount.toLocaleString()}
+              {/* TOTALS */}
+              <div className="border-t p-4 space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span>Subtotal</span>
+                  <span>₹{subtotal.toLocaleString()}</span>
                 </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">Discount</span>
+                  <Input
+                    type="number"
+                    value={discount}
+                    onChange={(e) =>
+                      setDiscount(Number(e.target.value || 0))
+                    }
+                    className="h-8 w-32"
+                  />
+                </div>
+
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total</span>
+                  <span>₹{finalAmount.toLocaleString()}</span>
+                </div>
+
+                    <div className="flex justify-between text-sm">
+                      <span>Due for this bill</span>
+                      <span className="font-medium">
+                        ₹{billDue.toLocaleString()}
+                      </span>
+                    </div>
+
+                {/* PAYMENT */}
+                <div className="space-y-2 pt-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <span>Paid Now</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={finalAmount}
+                      value={paidNow}
+                      onChange={(e) =>
+                        setPaidNow(
+                          Math.min(
+                            finalAmount,
+                            Number(e.target.value || 0)
+                          )
+                        )
+                      }
+                      className="h-8 w-40"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPaidNow(finalAmount)}
+                    >
+                      Pay Full
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPaidNow(0)}
+                    >
+                      Pay Later
+                    </Button>
+                  </div>
+
+                  {paidNow > 0 && (
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) =>
+                        setPaymentMethod(e.target.value)
+                      }
+                      className="w-full border rounded px-2 py-1 text-sm"
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="upi">UPI</option>
+                      <option value="card">Card</option>
+                      <option value="bank">Bank</option>
+                    </select>
+                  )}
+                </div>
+
                 <Button
-                  className="mt-4 w-full"
+                  className="w-full mt-2"
                   disabled={!cart.length || isSaving}
                   onClick={handleSaveSale}
                 >
@@ -426,271 +498,6 @@ export default function SalesPage() {
           </Card>
         </div>
       </div>
-
-      {/* SALES HISTORY */}
-<Card>
-  <CardHeader>
-    <CardTitle>Recent Sales</CardTitle>
-  </CardHeader>
-
-  <CardContent>
-
-    {/* SEARCH & DATE FILTER */}
-    <div className="mb-4 grid grid-cols-1 sm:grid-cols-4 gap-2">
-      <input
-        type="text"
-        placeholder="Search bill / amount"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="border rounded px-2 py-1 text-sm"
-      />
-
-      <input
-        type="date"
-        value={fromDate}
-        onChange={(e) => setFromDate(e.target.value)}
-        className="border rounded px-2 py-1 text-sm"
-      />
-
-      <input
-        type="date"
-        value={toDate}
-        onChange={(e) => setToDate(e.target.value)}
-        className="border rounded px-2 py-1 text-sm"
-      />
-
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => {
-          setSearch("")
-          setFromDate("")
-          setToDate("")
-        }}
-      >
-        Clear
-      </Button>
-    </div>
-
-    {loadingSales ? (
-      <p className="text-sm text-muted-foreground">Loading…</p>
-    ) : filteredSales.length === 0 ? (
-      <p className="text-sm text-muted-foreground">No sales found</p>
-    ) : (
-      filteredSales.map((s) => {
-        const isExpanded = expandedSaleId === s.id
-        const details = saleDetails[s.id]
-
-        const canReturn =
-          details?.items?.some(
-            (item: any) => item.remaining_qty > 0
-          ) ?? false
-
-        return (
-          <div key={s.id} className="border-b">
-
-            {/* SUMMARY ROW */}
-            <button
-              onClick={() => toggleSaleDetails(s.id)}
-              className="w-full flex justify-between items-center py-3 text-left hover:bg-muted px-2"
-            >
-              <span className="text-sm">
-                {formatDateTime(s.sale_date)}
-              </span>
-
-              <div className="flex items-center gap-3">
-                <span className="font-medium">
-                  ₹{Number(s.total).toLocaleString()}
-                </span>
-                <ChevronDown
-                  className={`w-4 h-4 transition-transform ${
-                    isExpanded ? "rotate-180" : ""
-                  }`}
-                />
-              </div>
-            </button>
-
-            {/* EXPANDED DETAILS */}
-            {isExpanded && (
-              <div className="bg-muted/40 px-3 py-3">
-
-                {!details ? (
-                  <p className="text-xs text-muted-foreground">
-                    Loading bill…
-                  </p>
-                ) : (
-                  <>
-                    {/* HEADER */}
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-semibold">
-                        Bill Items
-                      </span>
-
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!canReturn}
-                        onClick={() => setActiveReturnSale(details)}
-                      >
-                        {canReturn ? "Return" : "Fully Returned"}
-                      </Button>
-                    </div>
-
-                    {/* ITEMS */}
-                    <div className="space-y-1 mt-2">
-                      {details.items?.map((item: any) => (
-                        <div
-                          key={item.id}
-                          className="flex justify-between text-sm"
-                        >
-                          <span>
-                            {item.product?.name} × {item.quantity}
-                          </span>
-                          <span>
-                            ₹{Number(item.line_total).toLocaleString()}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* RETURN HISTORY */}
-                    {details.returns && details.returns.length > 0 && (
-                      <div className="mt-4 border-t pt-3 space-y-2">
-                        <div className="text-xs font-semibold text-muted-foreground">
-                          Return History
-                        </div>
-
-                        {details.returns.map((ret: any) => (
-                          <div
-                            key={ret.id}
-                            className="rounded border bg-background p-2 text-sm"
-                          >
-                            <div className="flex justify-between font-medium">
-                              <span>
-                                {new Date(ret.return_date).toLocaleDateString()}
-                              </span>
-                              <span className="text-destructive">
-                                - ₹{Number(ret.refund_amount).toLocaleString()}
-                              </span>
-                            </div>
-
-                            <div className="mt-1 space-y-1 text-xs text-muted-foreground">
-                              {ret.items.map((ri: any) => (
-                                <div
-                                  key={ri.id}
-                                  className="flex justify-between"
-                                >
-                                  <span>
-                                    {ri.product?.name} × {ri.quantity}
-                                  </span>
-                                  <span>
-                                    ₹{Number(ri.line_total).toLocaleString()}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* TOTALS */}
-                    <div className="border-t mt-3 pt-2 text-sm space-y-1">
-                      <div className="flex justify-between">
-                        <span>Gross Total</span>
-                        <span>
-                          ₹{Number(details.total).toLocaleString()}
-                        </span>
-                      </div>
-
-                      {Number(details.refund_total) > 0 && (
-                        <div className="flex justify-between text-destructive">
-                          <span>Refunded</span>
-                          <span>
-                            - ₹{Number(details.refund_total).toLocaleString()}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex justify-between font-semibold">
-                        <span>Net Total</span>
-                        <span>
-                          ₹{Number(details.net_total).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* INVOICES */}
-                    {details.invoices?.length > 0 && (
-                      <div className="mt-3 border-t pt-2 space-y-2">
-                        <div className="text-xs font-semibold text-muted-foreground">
-                          Invoices
-                        </div>
-
-                        {details.invoices.map((inv: any) => (
-                          <div
-                            key={inv.id}
-                            className="flex items-center justify-between text-sm"
-                          >
-                            <div className="flex items-center gap-2">
-                              <FileText className="w-4 h-4 text-muted-foreground" />
-                              <span className="font-medium">
-                                {inv.invoice_number}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                ({inv.invoice_type === "sale" ? "Sale" : "Return"})
-                              </span>
-                            </div>
-
-                            <div className="flex gap-2">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() =>
-                                  window.open(
-                                    `${process.env.NEXT_PUBLIC_API_BASE_URL}/invoices/${inv.id}/print`,
-                                    "_blank"
-                                  )
-                                }
-                              >
-                                <Printer className="w-4 h-4" />
-                              </Button>
-
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() =>
-                                  window.open(
-                                    `${process.env.NEXT_PUBLIC_API_BASE_URL}/invoices/${inv.id}/download`,
-                                    "_blank"
-                                  )
-                                }
-                              >
-                                <Download className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )
-      })
-    )}
-  </CardContent>
-</Card>
-
-      
-      <SaleReturnModal
-        open={!!activeReturnSale}
-        sale={activeReturnSale}
-        onClose={() => setActiveReturnSale(null)}
-        onSubmit={handleReturnSubmit}
-      />
     </div>
   )
 }

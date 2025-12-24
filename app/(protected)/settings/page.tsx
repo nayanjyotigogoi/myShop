@@ -10,7 +10,7 @@ import { AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function SettingsPage() {
-  const [shopName, setShopName] = useState("MyShop Clothing Store")
+  const [shopName, setShopName] = useState("M/S Dipullina Store")
   const [currency, setCurrency] = useState("INR")
   const [lowStockThreshold, setLowStockThreshold] = useState("5")
   const [isSaved, setIsSaved] = useState(false)
