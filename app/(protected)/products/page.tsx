@@ -306,7 +306,7 @@ export default function ProductsPage() {
         </CardContent>
       </Card>
 
-      <ProductModal
+      {/* <ProductModal
         isOpen={isModalOpen || !!editingProduct}
         initialData={editingProduct}
         onClose={() => {
@@ -314,7 +314,21 @@ export default function ProductsPage() {
           setEditingProduct(null)
         }}
         onSave={handleSaveProduct}
-      />
+      /> */}
+      <ProductModal
+  isOpen={isModalOpen || !!editingProduct}
+  initialData={editingProduct}
+
+  // ADDED ON 24.12.2025
+  existingCodes={products.map((p) => p.code)}
+
+  onClose={() => {
+    setIsModalOpen(false)
+    setEditingProduct(null)
+  }}
+  onSave={handleSaveProduct}
+/>
+
     </div>
   )
 }

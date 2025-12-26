@@ -1,15 +1,31 @@
 "use client"
 
 import { authFetch } from "@/lib/authFetch"
-import { useEffect, useState} from "react"
+import { useEffect, useState, Fragment, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, ChevronDown } from "lucide-react"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Plus, ChevronDown, Search } from "lucide-react"
+import { Input } from "@/components/ui/input"
 import PurchaseModal from "@/components/purchase-modal"
-import { Fragment } from "react"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api"
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api"
+
+/* ================= TYPES ================= */
 
 type BackendPurchase = {
   id: number
@@ -18,21 +34,14 @@ type BackendPurchase = {
   total_amount: string
   items_count: number
   total_items?: number | string | null
-  created_at?: string
-  updated_at?: string
 }
 
 type PurchaseFormPayload = {
-  date: string
+  purchase_date: string
   supplier: string
-  items: {
-    productId: number
-    quantity: number
-    price: number
-  }[]
+  items: any[]
 }
 
-// Detail type (shape returned by GET /api/purchases/{id})
 type PurchaseDetail = BackendPurchase & {
   items?: {
     id: number
@@ -41,13 +50,12 @@ type PurchaseDetail = BackendPurchase & {
     unit_price: string
     line_total: string
     product?: {
-      id: number
-      code: string
       name: string
-      size?: string | null
     }
   }[]
 }
+
+/* ================= PAGE ================= */
 
 export default function PurchasesPage() {
   const [purchases, setPurchases] = useState<BackendPurchase[]>([])
@@ -55,21 +63,31 @@ export default function PurchasesPage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // For actions / details
   const [expandedId, setExpandedId] = useState<number | null>(null)
-  const [purchaseDetails, setPurchaseDetails] = useState<Record<number, PurchaseDetail>>({})
+  const [purchaseDetails, setPurchaseDetails] = useState<
+    Record<number, PurchaseDetail>
+  >({})
   const [detailsLoadingId, setDetailsLoadingId] = useState<number | null>(null)
 
-  /* -------- LOAD PURCHASES -------- */
+  // ✅ ADDED: edit mode state
+  const [editingPurchase, setEditingPurchase] =
+    useState<PurchaseDetail | null>(null)
+
+  const [search, setSearch] = useState("")
+
+  const PAGE_SIZE = 10
+  const [page, setPage] = useState(1)
+
+  /* ================= LOAD PURCHASES ================= */
+
   const loadPurchases = async () => {
     try {
       setLoading(true)
       const res = await authFetch(`${API_BASE_URL}/purchases`)
       const data: BackendPurchase[] = await res.json()
       setPurchases(data)
-    } catch (err) {
-      console.error(err)
-      alert("Failed to load purchases from server")
+    } catch {
+      alert("Failed to load purchases")
     } finally {
       setLoading(false)
     }
@@ -79,173 +97,146 @@ export default function PurchasesPage() {
     loadPurchases()
   }, [])
 
-  const handleAddPurchase = async (payload: PurchaseFormPayload) => {
-    if (!payload.items.length) {
-      alert("Add at least one line item")
-      return
-    }
+  /* ================= CREATE / UPDATE PURCHASE ================= */
 
+  const handleAddPurchase = async (payload: PurchaseFormPayload) => {
     try {
       setSaving(true)
 
-      const body = {
-        purchase_date: payload.date,
-        supplier: payload.supplier || null,
-        items: payload.items.map((item) => ({
-          product_id: item.productId,
-          quantity: item.quantity,
-          unit_price: item.price,
-        })),
-      }
+      // ✅ MODIFIED: POST vs PUT (no removal)
+      const url = editingPurchase
+        ? `${API_BASE_URL}/purchases/${editingPurchase.id}`
+        : `${API_BASE_URL}/purchases`
 
-      console.log("Sending purchase payload:", body)
+      const method = editingPurchase ? "PUT" : "POST"
 
-      const res = await fetch(`${API_BASE_URL}/purchases`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+      const res = await authFetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
       })
 
       if (!res.ok) {
-        const text = await res.text()
-        console.error("Create purchase error:", res.status, text)
-
-        // Try to parse Laravel validation errors
-        try {
-          const json = JSON.parse(text)
-          if (json?.errors) {
-            const firstError = Object.values(json.errors)[0] as string[]
-            alert(firstError[0] || "Validation error")
-            return
-          }
-        } catch {
-          // response not JSON, ignore
-        }
-
-        throw new Error(text || "Failed to create purchase")
+        const err = await res.json()
+        throw new Error(err?.message || "Failed to save purchase")
       }
 
       await loadPurchases()
       setIsModalOpen(false)
+      setEditingPurchase(null) // ✅ RESET edit mode
     } catch (err: any) {
-      console.error(err)
-      alert(err.message || "Error saving purchase")
+      alert(err.message)
     } finally {
       setSaving(false)
     }
   }
 
-  const handleToggleDetails = async (purchaseId: number) => {
-    // Collapse if already open
-    if (expandedId === purchaseId) {
+  /* ================= DETAILS ================= */
+
+  const handleToggleDetails = async (id: number) => {
+    if (expandedId === id) {
       setExpandedId(null)
       return
     }
 
-    // If we don't have details yet, fetch them
-    if (!purchaseDetails[purchaseId]) {
+    if (!purchaseDetails[id]) {
       try {
-        setDetailsLoadingId(purchaseId)
-        const res = await authFetch(`${API_BASE_URL}/purchases/${purchaseId}`, {
-          cache: "no-store",
-        })
-        if (!res.ok) {
-          const text = await res.text()
-          console.error("Failed to load purchase details:", res.status, text)
-          throw new Error("Failed to load purchase details")
-        }
-        const data: PurchaseDetail = await res.json()
-        setPurchaseDetails((prev) => ({
-          ...prev,
-          [purchaseId]: data,
-        }))
-      } catch (err) {
-        console.error(err)
-        alert("Failed to load purchase details")
-        return
+        setDetailsLoadingId(id)
+        const res = await authFetch(`${API_BASE_URL}/purchases/${id}`)
+        const data = await res.json()
+        setPurchaseDetails((p) => ({ ...p, [id]: data }))
       } finally {
         setDetailsLoadingId(null)
       }
     }
 
-    setExpandedId(purchaseId)
+    setExpandedId(id)
   }
 
-  const totalPurchases = purchases.reduce((sum, p) => sum + Number(p.total_amount || 0), 0)
-  const totalItems = purchases.reduce(
-    (sum, p) => sum + Number(p.total_items ?? 0),
-    0
+  /* ================= SEARCH + PAGINATION ================= */
+
+  const filteredPurchases = useMemo(() => {
+    if (!search) return purchases
+
+    const s = search.toLowerCase()
+
+    return purchases.filter((p) =>
+      [p.supplier, p.purchase_date, p.total_amount]
+        .join(" ")
+        .toLowerCase()
+        .includes(s)
+    )
+  }, [search, purchases])
+
+  const totalPages = Math.ceil(filteredPurchases.length / PAGE_SIZE)
+
+  const paginatedPurchases = filteredPurchases.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE
   )
-  const avgOrder = purchases.length ? totalPurchases / purchases.length : 0
+
+  /* ================= DATE FORMATTER ================= */
+
+  const formatDate = (isoDate: string) => {
+    if (!isoDate) return "-"
+
+    const date = new Date(isoDate)
+
+    return date.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+  }
+
+  useEffect(() => {
+    setPage(1)
+  }, [search])
+
+  /* ================= UI ================= */
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold">Purchases</h1>
-          <p className="text-muted-foreground mt-2">Manage your purchase orders</p>
+          <h1 className="text-4xl font-bold">Purchases</h1>
+          <p className="text-muted-foreground">
+            Manage purchase orders
+          </p>
         </div>
+
         <Button
-          onClick={() => setIsModalOpen(true)}
-          className="w-full md:w-auto"
+          onClick={() => {
+            setEditingPurchase(null) // ✅ ENSURE create mode
+            setIsModalOpen(true)
+          }}
           size="lg"
-          disabled={saving}
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Purchase
+          <Plus className="w-4 h-4 mr-2" /> Add Purchase
         </Button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Purchases</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold">
-              ₹{totalPurchases.toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {purchases.length} orders
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Average Order</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold">
-              ₹{Math.round(avgOrder || 0).toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Per order</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold">
-              {totalItems.toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Pieces purchased</p>
-          </CardContent>
-        </Card>
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by supplier, date, amount..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
-      {/* Purchases Table */}
       <Card>
         <CardHeader>
           <CardTitle>Purchase History</CardTitle>
           <CardDescription>
-            {loading ? "Loading..." : "All your purchase orders"}
+            {loading ? "Loading..." : `${filteredPurchases.length} records`}
           </CardDescription>
         </CardHeader>
+
         <CardContent>
           <Table>
             <TableHeader>
@@ -259,109 +250,104 @@ export default function PurchasesPage() {
             </TableHeader>
 
             <TableBody>
-              {purchases.map((purchase) => {
-                const isExpanded = expandedId === purchase.id
-                const detail = purchaseDetails[purchase.id]
+              {paginatedPurchases.map((p) => (
+                <Fragment key={p.id}>
+                  <TableRow>
+                    <TableCell>{formatDate(p.purchase_date)}</TableCell>
+                    <TableCell>{p.supplier || "-"}</TableCell>
+                    <TableCell className="text-right">
+                      {p.total_items ?? 0}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      ₹{Number(p.total_amount).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleDetails(p.id)}
+                      >
+                        <ChevronDown
+                          className={`w-4 h-4 ${
+                            expandedId === p.id ? "rotate-180" : ""
+                          }`}
+                        />
+                      </Button>
 
-                return (
-                  <Fragment key={purchase.id}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={async () => {
+                          const res = await authFetch(
+                            `${API_BASE_URL}/purchases/${p.id}`
+                          )
+                          const data = await res.json()
+                          setEditingPurchase(data)
+                          setIsModalOpen(true)
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+
+                  {expandedId === p.id && (
                     <TableRow>
-                      <TableCell>{purchase.purchase_date}</TableCell>
-                      <TableCell>{purchase.supplier || "-"}</TableCell>
-                      <TableCell className="text-right">
-                        {Number(purchase.total_items ?? 0)} pcs
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        ₹{Number(purchase.total_amount).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleToggleDetails(purchase.id)}
-                        >
-                          <ChevronDown
-                            className={`w-4 h-4 transition-transform ${
-                              isExpanded ? "rotate-180" : ""
-                            }`}
-                          />
-                        </Button>
+                      <TableCell colSpan={5}>
+                        <div className="border rounded p-3 text-sm">
+                          {purchaseDetails[p.id]?.items?.map((i) => (
+                            <div
+                              key={i.id}
+                              className="flex justify-between"
+                            >
+                              <span>{i.product?.name}</span>
+                              <span>
+                                {i.quantity} × ₹{i.unit_price}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </TableCell>
                     </TableRow>
-
-                    {isExpanded && (
-                      <TableRow>
-                        <TableCell colSpan={5}>
-                          {detailsLoadingId === purchase.id ? (
-                            <p className="text-sm text-muted-foreground py-2">
-                              Loading details...
-                            </p>
-                          ) : !detail?.items?.length ? (
-                            <p className="text-sm text-muted-foreground py-2">
-                              No line items found.
-                            </p>
-                          ) : (
-                            <div className="rounded border bg-muted/40 p-3">
-                              <div className="text-sm font-semibold mb-2">
-                                Purchase Details
-                              </div>
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="border-b">
-                                    <th className="text-left py-1">Product</th>
-                                    <th className="text-right py-1">Qty</th>
-                                    <th className="text-right py-1">
-                                      Unit Price
-                                    </th>
-                                    <th className="text-right py-1">
-                                      Line Total
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {detail.items.map((item) => (
-                                    <tr key={item.id} className="border-t">
-                                      <td className="py-1">
-                                        {item.product?.name}
-                                      </td>
-                                      <td className="text-right py-1">
-                                        {item.quantity}
-                                      </td>
-                                      <td className="text-right py-1">
-                                        ₹
-                                        {Number(
-                                          item.unit_price
-                                        ).toLocaleString()}
-                                      </td>
-                                      <td className="text-right py-1">
-                                        ₹
-                                        {Number(
-                                          item.line_total
-                                        ).toLocaleString()}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
-                )
-              })}
+                  )}
+                </Fragment>
+              ))}
             </TableBody>
           </Table>
+
+          <div className="flex justify-between items-center mt-4">
+            <Button
+              variant="outline"
+              disabled={page === 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Previous
+            </Button>
+
+            <span className="text-sm">
+              Page {page} of {totalPages || 1}
+            </span>
+
+            <Button
+              variant="outline"
+              disabled={page === totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Purchase Modal */}
       <PurchaseModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false)
+          setEditingPurchase(null) // ✅ RESET
+        }}
         onSave={handleAddPurchase}
         isSaving={saving}
+        purchase={editingPurchase} // ✅ PASS EDIT DATA
       />
     </div>
   )
