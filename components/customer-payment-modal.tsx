@@ -1,5 +1,5 @@
 "use client"
-
+import { notify } from "@/lib/notify"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,17 +22,17 @@ export default function CustomerPaymentModal({
 
   const handlePay = async () => {
     if (customerDue <= 0) {
-      alert("Customer has no due")
+      notify.info("Customer has no due")
       return
     }
 
     if (amount <= 0) {
-      alert("Enter valid amount")
+      notify.warning("Enter a valid payment amount")
       return
     }
 
     if (amount > customerDue) {
-      alert("Payment exceeds total due")
+      notify.error("Payment exceeds total due")
       return
     }
 
@@ -53,11 +53,12 @@ export default function CustomerPaymentModal({
         const text = await res.text()
         throw new Error(text || "Payment failed")
       }
-
+      
+      notify.success("Payment received successfully")
       onPaid()
       onClose()
     } catch (err: any) {
-      alert(err.message || "Payment failed")
+       notify.error(err.message || "Payment failed")
     } finally {
       setSaving(false)
     }

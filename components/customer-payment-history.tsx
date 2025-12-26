@@ -1,4 +1,7 @@
+
 "use client"
+
+import { notify } from "@/lib/notify"
 
 import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -26,21 +29,34 @@ export default function CustomerPaymentHistory({
     loadHistory()
   }, [])
 
-  const loadHistory = async () => {
-    setLoading(true)
-    try {
-      const res = await authFetch(
-        `${API_BASE_URL}/customers/${customer.id}/payments`
-      )
-      const data = await res.json()
-      setPayments(Array.isArray(data) ? data : [])
-    } catch (err) {
-      console.error("Failed to load payment history", err)
-      setPayments([])
-    } finally {
-      setLoading(false)
+const loadHistory = async () => {
+  setLoading(true)
+  try {
+    const res = await authFetch(
+      `${API_BASE_URL}/customers/${customer.id}/payments`
+    )
+
+    if (!res.ok) {
+      throw new Error("Failed to load payment history")
     }
+
+    const data = await res.json()
+    const list = Array.isArray(data) ? data : []
+
+    setPayments(list)
+
+    // ℹ️ Optional info toast (only once per open)
+    if (list.length === 0) {
+      notify.info("No payment history found for this customer")
+    }
+  } catch (err: any) {
+    notify.error(err.message || "Failed to load payment history")
+    setPayments([])
+  } finally {
+    setLoading(false)
   }
+}
+
 
   /* ================= FILTER + SEARCH ================= */
 
@@ -63,13 +79,28 @@ export default function CustomerPaymentHistory({
 
   /* ================= RECEIPT ACTIONS ================= */
 
-  const openReceipt = (receiptNo: string) => {
-    window.open(`${API_BASE_URL}/receipts/${receiptNo}/print`, "_blank")
+const openReceipt = (receiptNo: string) => {
+  try {
+    window.open(
+      `${API_BASE_URL}/receipts/${receiptNo}/print`,
+      "_blank"
+    )
+  } catch {
+    notify.error("Failed to open receipt")
   }
+}
 
-  const downloadReceipt = (receiptNo: string) => {
-    window.open(`${API_BASE_URL}/receipts/${receiptNo}/download`, "_blank")
+const downloadReceipt = (receiptNo: string) => {
+  try {
+    window.open(
+      `${API_BASE_URL}/receipts/${receiptNo}/download`,
+      "_blank"
+    )
+  } catch {
+    notify.error("Failed to download receipt")
   }
+}
+
 
   /* ================= UI ================= */
 

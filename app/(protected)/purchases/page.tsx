@@ -1,5 +1,5 @@
 "use client"
-
+import { notify } from "@/lib/notify"
 import { authFetch } from "@/lib/authFetch"
 import { useEffect, useState, Fragment, useMemo } from "react"
 import { Button } from "@/components/ui/button"
@@ -87,7 +87,7 @@ export default function PurchasesPage() {
       const data: BackendPurchase[] = await res.json()
       setPurchases(data)
     } catch {
-      alert("Failed to load purchases")
+      notify.error("Failed to load purchases")
     } finally {
       setLoading(false)
     }
@@ -125,10 +125,16 @@ export default function PurchasesPage() {
       }
 
       await loadPurchases()
+      if (editingPurchase) {
+  notify.success("Purchase updated successfully")
+} else {
+  notify.success("Purchase added successfully")
+}
       setIsModalOpen(false)
       setEditingPurchase(null) // ✅ RESET edit mode
+
     } catch (err: any) {
-      alert(err.message)
+  notify.error(err.message || "Failed to save purchase")
     } finally {
       setSaving(false)
     }
@@ -278,6 +284,11 @@ export default function PurchasesPage() {
                         variant="ghost"
                         size="sm"
                         onClick={async () => {
+
+                          notify.warning(
+                            "Editing a purchase will recalculate product stock"
+                          )
+
                           const res = await authFetch(
                             `${API_BASE_URL}/purchases/${p.id}`
                           )

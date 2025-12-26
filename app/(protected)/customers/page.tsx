@@ -1,5 +1,7 @@
 "use client"
 
+import { notify } from "@/lib/notify"
+
 import { useEffect, useMemo, useState } from "react"
 import { authFetch } from "@/lib/authFetch"
 import { Button } from "@/components/ui/button"
@@ -75,7 +77,7 @@ export default function CustomersPage() {
 
       setCustomers(list)
     } catch (err) {
-      console.error("Failed to load customers", err)
+       notify.error("Failed to load customers")
       setCustomers([])
     } finally {
       setLoading(false)
@@ -115,10 +117,16 @@ export default function CustomersPage() {
 
   /* ================= OPEN PAYMENT ================= */
 
-  const openPaymentModal = async (customer: Customer) => {
+const openPaymentModal = async (customer: Customer) => {
+  try {
     const res = await authFetch(
       `${API_BASE_URL}/sales?customer_id=${customer.id}`
     )
+
+    if (!res.ok) {
+      throw new Error("Failed to fetch customer sales")
+    }
+
     const json = await res.json()
 
     const sales = Array.isArray(json)
@@ -134,13 +142,17 @@ export default function CustomersPage() {
     )
 
     if (!unpaidSale) {
-      alert("No unpaid invoices found")
+      notify.info("No unpaid invoices found for this customer")
       return
     }
 
     setActivePaymentCustomer(customer)
     setActiveSale(unpaidSale)
+  } catch (err: any) {
+    notify.error(err.message || "Unable to open payment window")
   }
+}
+
 
   /* ================= UI ================= */
 

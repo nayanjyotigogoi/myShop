@@ -1,5 +1,6 @@
 "use client"
 
+
 import { useEffect, useState, useMemo } from "react"
 import { authFetch } from "@/lib/authFetch"
 import { Button } from "@/components/ui/button"
@@ -32,6 +33,7 @@ type BackendProduct = {
   code: string
   name: string
   size: string | null
+  color?: string | null
   buy_price: string
   sell_price?: string
 }
@@ -50,6 +52,14 @@ type PurchaseItem = {
   mode: "existing" | "new"
   productId?: number
   product?: NewProductForm
+
+  // snapshot fields (DO NOT REMOVE)
+  code?: string
+  name?: string
+  size?: string
+  color?: string
+  sell_price?: number
+
   quantity: number
   price: number
 }
@@ -63,8 +73,6 @@ interface PurchaseModalProps {
     items: any[]
   }) => void
   isSaving?: boolean
-
-  /* ✅ ADDED FOR EDIT SUPPORT (NON-BREAKING) */
   purchase?: any | null
 }
 
@@ -75,9 +83,8 @@ export default function PurchaseModal({
   onClose,
   onSave,
   isSaving = false,
-  purchase, // ✅ ADDITION
+  purchase,
 }: PurchaseModalProps) {
-
   const isEditMode = !!purchase
 
   const [date, setDate] = useState(
@@ -112,7 +119,8 @@ export default function PurchaseModal({
     fetchProducts()
   }, [isOpen])
 
-  /* ================= EDIT PREFILL (ADDED) ================= */
+  /* ================= EDIT PREFILL ================= */
+
   useEffect(() => {
     if (!purchase || !isOpen) return
 
@@ -123,6 +131,11 @@ export default function PurchaseModal({
       purchase.items.map((i: any) => ({
         mode: "existing",
         productId: i.product_id,
+        code: i.product.code,
+        name: i.product.name,
+        size: i.product.size,
+        color: i.product.color,
+        sell_price: Number(i.product.sell_price || 0),
         quantity: i.quantity,
         price: Number(i.unit_price),
       }))
@@ -132,11 +145,6 @@ export default function PurchaseModal({
   }, [purchase, isOpen])
 
   /* ================= HELPERS ================= */
-
-  const existingProductCodes = useMemo(
-    () => products.map((p) => p.code.toLowerCase()),
-    [products]
-  )
 
   const updateItem = (index: number, patch: Partial<PurchaseItem>) => {
     const copy = [...items]
@@ -187,11 +195,31 @@ export default function PurchaseModal({
 
     setErrors({})
 
-    const payloadItems = items.map((i) => ({
-      product_id: i.productId,
-      quantity: Number(i.quantity),
-      unit_price: Number(i.price),
-    }))
+    const payloadItems = items.map((i) => {
+if (i.mode === "existing") {
+  return {
+    product_id: i.productId,
+    quantity: Number(i.quantity),
+    unit_price: Number(i.price),
+    sell_price: Number(i.sell_price || 0), // ✅ ADD THIS LINE
+  }
+}
+
+
+      return {
+        product: {
+          code: i.product?.code,
+          name: i.product?.name,
+          category: i.product?.category,
+          gender: i.product?.gender,
+          size: i.product?.size,
+          color: i.product?.color,
+          sell_price: Number(i.product?.sell_price || 0),
+        },
+        quantity: Number(i.quantity),
+        unit_price: Number(i.price),
+      }
+    })
 
     onSave({
       purchase_date: date,
@@ -210,7 +238,7 @@ export default function PurchaseModal({
             {purchase ? "Edit Purchase Order" : "Add Purchase Order"}
           </DialogTitle>
           <DialogDescription>
-            Select existing products or create new ones inline
+            Select products and correct mistakes if needed
           </DialogDescription>
         </DialogHeader>
 
@@ -235,213 +263,338 @@ export default function PurchaseModal({
           </div>
 
           {/* Line Items */}
-          {items.map((item, index) => (
-            <div key={index} className="rounded border p-3 space-y-3">
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant={item.mode === "existing" ? "default" : "outline"}
-                  onClick={() =>
-                    updateItem(index, {
-                      mode: "existing",
-                      product: undefined,
-                    })
-                  }
-                >
-                  Existing
-                </Button>
-                <Button
-  size="sm"
-  variant={item.mode === "new" ? "default" : "outline"}
-  disabled={isEditMode}
-  title={
-    isEditMode
-      ? "New products cannot be added while editing a purchase"
-      : undefined
-  }
-  onClick={() => {
-    if (isEditMode) return
+          {items.map((item, index) => {
+            const selectedProduct = products.find(
+              (p) => p.id === item.productId
+            )
 
-    updateItem(index, {
-      mode: "new",
-      product: {
-        code: "",
-        name: "",
-        category: "",
-        gender: "unisex",
-        size: "",
-        color: "",
-        sell_price: 0,
-      },
-    })
-  }}
->
-  New Product
-</Button>
-
-              </div>
-
-              {/* Existing Product */}
-{item.mode === "existing" && (
-  <div>
-    <Label>Product</Label>
-
-    {/* 🔒 EDIT MODE: DISPLAY ONLY */}
-    {isEditMode ? (
-      <div className="px-3 py-2 border rounded bg-muted text-sm">
-        {
-          products.find((p) => p.id === item.productId)?.code
-        }
-        {" - "}
-        {
-          products.find((p) => p.id === item.productId)?.name
-        }
-      </div>
-    ) : (
-      /* 🆕 CREATE MODE: SELECTABLE */
-      <Select
-        value={item.productId ? String(item.productId) : ""}
-        onValueChange={(v) => {
-          const product = products.find(
-            (p) => p.id === Number(v)
-          )
-          updateItem(index, {
-            productId: Number(v),
-            price: Number(product?.buy_price || 0),
-          })
-        }}
-      >
-        <SelectTrigger>
-          <SelectValue placeholder="Select product" />
-        </SelectTrigger>
-        <SelectContent>
-          {products.map((p) => (
-            <SelectItem key={p.id} value={String(p.id)}>
-              {p.code} - {p.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    )}
-  </div>
-)}
-
-
-              {/* New Product */}
-              {item.mode === "new" && item.product && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label>Product Code</Label>
-                    <Input
-                      value={item.product.code}
-                      onChange={(e) =>
-                        updateItem(index, {
-                          product: {
-                            ...item.product!,
-                            code: e.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Product Name</Label>
-                    <Input
-                      value={item.product.name}
-                      onChange={(e) =>
-                        updateItem(index, {
-                          product: {
-                            ...item.product!,
-                            name: e.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Category</Label>
-                    <Input
-                      value={item.product.category}
-                      onChange={(e) =>
-                        updateItem(index, {
-                          product: {
-                            ...item.product!,
-                            category: e.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Sell Price</Label>
-                    <Input
-                      type="number"
-                      value={item.product.sell_price}
-                      onChange={(e) =>
-                        updateItem(index, {
-                          product: {
-                            ...item.product!,
-                            sell_price: Number(e.target.value) || 0,
-                          },
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <Label>Quantity</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={item.quantity}
-                    onChange={(e) =>
+            return (
+              <div key={index} className="rounded border p-3 space-y-3">
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant={item.mode === "existing" ? "default" : "outline"}
+                    onClick={() =>
                       updateItem(index, {
-                        quantity: Number(e.target.value) || 1,
+                        mode: "existing",
+                        product: undefined,
                       })
                     }
-                  />
-                </div>
+                  >
+                    Existing
+                  </Button>
 
-                <div>
-                  <Label>Purchase Price (Buy)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={item.price}
-                    onChange={(e) =>
-                      updateItem(index, {
-                        price: Number(e.target.value) || 0,
-                      })
+                  <Button
+                    size="sm"
+                    variant={item.mode === "new" ? "default" : "outline"}
+                    disabled={isEditMode}
+                    title={
+                      isEditMode
+                        ? "New products cannot be added while editing"
+                        : undefined
                     }
-                  />
+                    onClick={() => {
+                      if (isEditMode) return
+                      updateItem(index, {
+                        mode: "new",
+                        product: {
+                          code: "",
+                          name: "",
+                          category: "",
+                          gender: "unisex",
+                          size: "",
+                          color: "",
+                          sell_price: 0,
+                        },
+                      })
+                    }}
+                  >
+                    New Product
+                  </Button>
                 </div>
 
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleRemoveItem(index)}
-                >
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
+                {/* ===== EXISTING PRODUCT ===== */}
+                {item.mode === "existing" && (
+                  <>
+                    <Label>Product</Label>
+
+                    {/* ✅ CREATE MODE → SELECT WORKS */}
+                    {!isEditMode ? (
+                      <Select
+                        value={item.productId ? String(item.productId) : ""}
+                        onValueChange={(v) => {
+                          const p = products.find(
+                            (x) => x.id === Number(v)
+                          )
+                          if (!p) return
+
+                          updateItem(index, {
+                            productId: p.id,
+                            code: p.code,
+                            name: p.name,
+                            size: p.size ?? "",
+                            color: p.color ?? "",
+                            sell_price: Number(p.sell_price || 0),
+                            price: Number(p.buy_price || 0),
+                          })
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select product" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {products.map((p) => (
+                            <SelectItem key={p.id} value={String(p.id)}>
+                              {p.code} - {p.name}
+                              {p.size ? ` (${p.size})` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      /* 🔒 EDIT MODE → READ ONLY */
+                      <Input
+                        value={`${item.code} - ${item.name}`}
+                        readOnly
+                      />
+                    )}
+
+                    {/* DETAILS (INPUTS ONLY) */}
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <div>
+                        <Label>Code</Label>
+                        <Input
+                          value={item.code || ""}
+                          readOnly={!isEditMode}
+                          onChange={(e) =>
+                            updateItem(index, { code: e.target.value })
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Name</Label>
+                        <Input
+                          value={item.name || ""}
+                          readOnly={!isEditMode}
+                          onChange={(e) =>
+                            updateItem(index, { name: e.target.value })
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Size</Label>
+                        <Input
+                          value={item.size || ""}
+                          readOnly={!isEditMode}
+                          onChange={(e) =>
+                            updateItem(index, { size: e.target.value })
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Color</Label>
+                        <Input
+                          value={item.color || ""}
+                          readOnly={!isEditMode}
+                          onChange={(e) =>
+                            updateItem(index, { color: e.target.value })
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Quantity</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={(e) =>
+                            updateItem(index, {
+                              quantity: Number(e.target.value) || 1,
+                            })
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Buy Price</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.price}
+                          onChange={(e) => {
+  updateItem(index, {
+    price: Number(e.target.value) || 0,
+  })
+}}
+
+                        />
+                      </div>
+
+                      <div>
+                        <Label>Sell Price</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={item.sell_price || 0}
+                          onChange={(e) =>
+                            updateItem(index, {
+                              sell_price:
+                                Number(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ===== NEW PRODUCT ===== */}
+                {item.mode === "new" && item.product && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* (UNCHANGED FROM YOUR CODE) */}
+                    <div>
+                      <Label>Product Code</Label>
+                      <Input
+                        value={item.product.code}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            product: {
+                              ...item.product!,
+                              code: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Product Name</Label>
+                      <Input
+                        value={item.product.name}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            product: {
+                              ...item.product!,
+                              name: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Category</Label>
+                      <Input
+                        value={item.product.category}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            product: {
+                              ...item.product!,
+                              category: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Size</Label>
+                      <Input
+                        value={item.product.size}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            product: {
+                              ...item.product!,
+                              size: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Quantity</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={item.quantity}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            quantity:
+                              Number(e.target.value) || 1,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Sell Price</Label>
+                      <Input
+                        type="number"
+                        value={item.product.sell_price}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            product: {
+                              ...item.product!,
+                              sell_price:
+                                Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Purchase Price (Buy)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={item.price}
+                        onChange={(e) =>
+                          updateItem(index, {
+                            price:
+                              Number(e.target.value) || 0,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleRemoveItem(index)}
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
+                )}
+
+                {errors[index]?.map((err, i) => (
+                  <p key={i} className="text-xs text-destructive">
+                    {err}
+                  </p>
+                ))}
               </div>
+            )
+          })}
 
-              {errors[index]?.map((err, i) => (
-                <p key={i} className="text-xs text-destructive">
-                  {err}
-                </p>
-              ))}
-            </div>
-          ))}
-
-          <Button variant="outline" onClick={handleAddItem}>
+          <Button
+            variant="outline"
+            onClick={handleAddItem}
+            disabled={isEditMode}
+            title={
+              isEditMode
+                ? "Items cannot be added while editing a purchase"
+                : undefined
+            }
+          >
             <Plus className="w-4 h-4 mr-1" /> Add Item
           </Button>
+
 
           <div className="flex justify-between font-bold border-t pt-3">
             <span>Total</span>

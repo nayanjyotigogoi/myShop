@@ -1,5 +1,6 @@
 "use client"
 
+import { notify } from "@/lib/notify"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -136,39 +137,48 @@ export default function SalesPOSPage() {
 
   /* ================= SAVE SALE ================= */
 
-  const handleSaveSale = async () => {
-    if (!cart.length) return
+const handleSaveSale = async () => {
+  if (!cart.length) return
 
-    if (paidNow > finalAmount) {
-      alert("Paid amount cannot exceed bill total")
-      return
-    }
+  if (paidNow > finalAmount) {
+    notify.error("Paid amount cannot exceed bill total")
+    return
+  }
 
-    if (paidNow < finalAmount && !customerId) {
-      alert("Please select a customer for credit sale")
-      return
-    }
+  if (paidNow < finalAmount && !customerId) {
+    notify.warning("Please select a customer for credit sale")
+    return
+  }
 
-    setIsSaving(true)
+  setIsSaving(true)
 
-    const payload = {
-      sale_date: new Date().toISOString(),
-      customer_id: customerId,
-      paid_now: paidNow,
-      payment_method: paidNow > 0 ? paymentMethod : null,
-      discount,
-      items: cart.map((i) => ({
-        product_id: i.id,
-        quantity: i.quantity,
-        unit_price: i.sellingPrice,
-      })),
-    }
+  const payload = {
+    sale_date: new Date().toISOString(),
+    customer_id: customerId,
+    paid_now: paidNow,
+    payment_method: paidNow > 0 ? paymentMethod : null,
+    discount,
+    items: cart.map((i) => ({
+      product_id: i.id,
+      quantity: i.quantity,
+      unit_price: i.sellingPrice,
+    })),
+  }
 
-    await authFetch(`${API_BASE_URL}/sales`, {
+  try {
+    const res = await authFetch(`${API_BASE_URL}/sales`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
+
+    if (!res.ok) {
+      const json = await res.json()
+      throw new Error(json?.message || "Failed to save sale")
+    }
+
+    // ✅ SUCCESS MESSAGE (THIS WAS MISSING)
+    notify.success("Sale saved successfully")
 
     setCart([])
     setDiscount(0)
@@ -176,8 +186,14 @@ export default function SalesPOSPage() {
     setCustomerId(null)
 
     await loadProducts()
+  } catch (err: any) {
+    // ❌ ERROR MESSAGE
+    notify.error(err.message || "Failed to save sale")
+  } finally {
     setIsSaving(false)
   }
+}
+
 
   /* ================= UI ================= */
 

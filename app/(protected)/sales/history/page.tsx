@@ -1,5 +1,7 @@
 "use client"
 
+import { notify } from "@/lib/notify"
+
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -63,11 +65,22 @@ export default function SalesHistoryPage() {
 
   const loadSales = async () => {
     setLoadingSales(true)
-    const res = await authFetch(`${API_BASE_URL}/sales`)
-    const data = await res.json()
-    setSales(data)
-    setLoadingSales(false)
+
+    try {
+      const res = await authFetch(`${API_BASE_URL}/sales`)
+      if (!res.ok) {
+        throw new Error("Failed to load sales history")
+      }
+
+      const data = await res.json()
+      setSales(data)
+    } catch (err: any) {
+      notify.error(err.message || "Failed to load sales history")
+    } finally {
+      setLoadingSales(false)
+    }
   }
+
 
   useEffect(() => {
     loadSales()
@@ -82,38 +95,55 @@ export default function SalesHistoryPage() {
     }
 
     if (!saleDetails[saleId]) {
-      const res = await authFetch(`${API_BASE_URL}/sales/${saleId}`)
-      const data = await res.json()
+      try {
+        const res = await authFetch(`${API_BASE_URL}/sales/${saleId}`)
+        if (!res.ok) {
+          throw new Error("Failed to load sale details")
+        }
 
-      setSaleDetails((prev) => ({
-        ...prev,
-        [saleId]: data,
-      }))
+        const data = await res.json()
+
+        setSaleDetails((prev) => ({
+          ...prev,
+          [saleId]: data,
+        }))
+      } catch (err: any) {
+        notify.error(err.message || "Failed to load sale details")
+        return
+      }
     }
 
     setExpandedSaleId(saleId)
   }
 
+
   /* ================= RETURN SUBMIT ================= */
 
   const handleReturnSubmit = async (payload: any) => {
-    const res = await authFetch(
-      `${API_BASE_URL}/sales/${activeReturnSale.id}/returns`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+    try {
+      const res = await authFetch(
+        `${API_BASE_URL}/sales/${activeReturnSale.id}/returns`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      )
+
+      if (!res.ok) {
+        const json = await res.json()
+        throw new Error(json?.message || "Return failed")
       }
-    )
 
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(text || "Return failed")
+      notify.success("Return processed successfully")
+
+      setActiveReturnSale(null)
+      await loadSales()
+    } catch (err: any) {
+      notify.error(err.message || "Failed to process return")
     }
-
-    setActiveReturnSale(null)
-    await loadSales()
   }
+
 
   /* ================= FILTERING ================= */
 

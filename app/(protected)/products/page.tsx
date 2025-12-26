@@ -1,5 +1,6 @@
 "use client"
 
+import { notify } from "@/lib/notify"
 import { authFetch } from "@/lib/authFetch"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Plus, Edit2, Trash2, Search } from "lucide-react"
 import ProductModal from "@/components/product-modal"
+
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api"
@@ -155,55 +157,65 @@ export default function ProductsPage() {
   })
 
   /* -------- SAVE (CREATE / UPDATE) -------- */
-  const handleSaveProduct = async (product: any) => {
-    try {
-      const body = {
-        code: product.code,
-        name: product.name,
-        category: product.category,
-        gender: toBackendGender(product.gender),
-        size: product.size || null,
-        color: product.color || null,
-        buy_price: Number(product.buyPrice),
-        sell_price: Number(product.sellPrice),
-        ...(editingProduct ? {} : { opening_stock: Number(product.stock || 0) }),
-      }
-
-      if (editingProduct) {
-        await authFetch(`${API_BASE_URL}/products/${editingProduct.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-      } else {
-        await authFetch(`${API_BASE_URL}/products`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-      }
-
-      await loadProducts()
-      setIsModalOpen(false)
-      setEditingProduct(null)
-    } catch (err: any) {
-      console.error(err)
-      alert(err.message || "Failed to save product")
+const handleSaveProduct = async (product: any) => {
+  try {
+    const body = {
+      code: product.code,
+      name: product.name,
+      category: product.category,
+      gender: toBackendGender(product.gender),
+      size: product.size || null,
+      color: product.color || null,
+      buy_price: Number(product.buyPrice),
+      sell_price: Number(product.sellPrice),
+      ...(editingProduct ? {} : { opening_stock: Number(product.stock || 0) }),
     }
+
+    if (editingProduct) {
+      await authFetch(`${API_BASE_URL}/products/${editingProduct.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      notify.success("Product updated successfully") // ✅ ADDED
+    } else {
+      await authFetch(`${API_BASE_URL}/products`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      notify.success("Product added successfully") // ✅ ADDED
+    }
+
+    await loadProducts()
+    setIsModalOpen(false)
+    setEditingProduct(null)
+  } catch (err: any) {
+    console.error(err)
+    notify.error(err.message || "Failed to save product") // ✅ ADDED
   }
+}
+
 
   /* -------- DELETE -------- */
-  const handleDeleteProduct = async (id: number) => {
-    if (!confirm("Delete this product?")) return
-    try {
-      await authFetch(`${API_BASE_URL}/products/${id}`, {
-        method: "DELETE",
-      })
-      await loadProducts()
-    } catch {
-      alert("Cannot delete product (linked to sales/purchases).")
-    }
+const handleDeleteProduct = async (id: number) => {
+  if (!confirm("Delete this product?")) return
+
+  try {
+    await authFetch(`${API_BASE_URL}/products/${id}`, {
+      method: "DELETE",
+    })
+
+    notify.success("Product deleted successfully") // ✅ ADDED
+    await loadProducts()
+  } catch {
+    notify.error(
+      "Cannot delete product. It is linked to sales or purchases."
+    ) // ✅ ADDED
   }
+}
 
   /* ================= UI ================= */
 

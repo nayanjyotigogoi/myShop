@@ -1,5 +1,7 @@
 "use client"
 
+import { notify } from "@/lib/notify"
+
 import { useState } from "react"
 import { authFetch } from "@/lib/authFetch"
 import { Button } from "@/components/ui/button"
@@ -21,7 +23,7 @@ export default function CustomerForm({
 
 const handleSave = async () => {
   if (!name.trim()) {
-    alert("Name is required")
+    notify.warning("Customer name is required")
     return
   }
 
@@ -45,15 +47,20 @@ const handleSave = async () => {
       throw new Error(text)
     }
 
+    notify.success(
+      customer.id
+        ? "Customer updated successfully"
+        : "Customer added successfully"
+    )
+
     onSaved()
     onClose()
   } catch (e: any) {
-    alert(e.message || "Failed to save customer")
+    notify.error(e.message || "Failed to save customer")
   } finally {
     setSaving(false)
   }
 }
-
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
