@@ -1,186 +1,306 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { authFetch } from "@/lib/authFetch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Download } from "lucide-react"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+} from "recharts"
 
-// Mock data
-const reportData = [
-  { date: "2024-12-03", sales: 12500, cost: 8750, profit: 3750 },
-  { date: "2024-12-02", sales: 11200, cost: 7840, profit: 3360 },
-  { date: "2024-12-01", sales: 9800, cost: 6860, profit: 2940 },
-  { date: "2024-11-30", sales: 14300, cost: 10010, profit: 4290 },
-  { date: "2024-11-29", sales: 8500, cost: 5950, profit: 2550 },
-]
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000/api"
 
-const topProducts = [
-  { id: 1, name: "Basic T-Shirt", sold: 125, revenue: 43750 },
-  { id: 2, name: "Denim Shorts", sold: 89, revenue: 53311 },
-  { id: 3, name: "Summer Dress", sold: 67, revenue: 53533 },
-  { id: 4, name: "Jacket", sold: 45, revenue: 53955 },
-  { id: 5, name: "Sweater", sold: 34, revenue: 30566 },
-]
+/* ================= TYPES ================= */
+
+type Period = "daily" | "monthly" | "yearly"
+
+type Summary = {
+  sales: number
+  cost: number
+  profit: number
+  invoices: number
+  products_sold: number
+}
+
+type ChartRow = {
+  label: string
+  sales: number
+  profit: number
+}
+
+type ProductRow = {
+  id: number
+  name: string
+  units_sold: number
+  revenue: number
+}
+
+/* ================= PAGE ================= */
 
 export default function ReportsPage() {
-  const [startDate, setStartDate] = useState("2024-11-29")
-  const [endDate, setEndDate] = useState("2024-12-03")
+  const [period, setPeriod] = useState<Period>("monthly")
+  const [from, setFrom] = useState("")
+  const [to, setTo] = useState("")
 
-  const totalSales = reportData.reduce((sum, d) => sum + d.sales, 0)
-  const totalCost = reportData.reduce((sum, d) => sum + d.cost, 0)
-  const totalProfit = reportData.reduce((sum, d) => sum + d.profit, 0)
-  const profitMargin = ((totalProfit / totalSales) * 100).toFixed(1)
+  const [summary, setSummary] = useState<Summary | null>(null)
+  const [chartData, setChartData] = useState<ChartRow[]>([])
+  const [products, setProducts] = useState<ProductRow[]>([])
+
+  const [search, setSearch] = useState("")
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 8
+
+  /* ================= LOAD REPORT ================= */
+
+  const loadReport = async () => {
+    const q = `period=${period}&from=${from}&to=${to}`
+
+    const [s, c, p] = await Promise.all([
+      authFetch(`${API_BASE_URL}/reports/summary?${q}`),
+      authFetch(`${API_BASE_URL}/reports/chart?${q}`),
+      authFetch(`${API_BASE_URL}/reports/top-products?${q}`),
+    ])
+
+    const summaryJson = await s.json()
+    const chartJson = await c.json()
+    const productsJson = await p.json()
+
+    setSummary(summaryJson ?? null)
+
+    // ✅ CRITICAL FIX — normalize chart data
+    setChartData(
+      Array.isArray(chartJson)
+        ? chartJson
+        : Array.isArray(chartJson?.data)
+        ? chartJson.data
+        : []
+    )
+
+    setProducts(Array.isArray(productsJson) ? productsJson : [])
+  }
+
+  useEffect(() => {
+    loadReport()
+  }, [period])
+
+  /* ================= FILTERED PRODUCTS ================= */
+
+  const filteredProducts = useMemo(() => {
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(search.toLowerCase())
+    )
+  }, [products, search])
+
+  const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE)
+
+  const paginated = filteredProducts.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE
+  )
+
+  /* ================= UI ================= */
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl md:text-4xl font-bold">Reports</h1>
-        <p className="text-muted-foreground mt-2">Analyze your business performance</p>
+      {/* HEADER */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Reports</h1>
+
+        <div className="flex gap-2">
+          {(["daily", "monthly", "yearly"] as Period[]).map((p) => (
+            <Button
+              key={p}
+              size="sm"
+              variant={period === p ? "default" : "outline"}
+              onClick={() => setPeriod(p)}
+            >
+              {p.toUpperCase()}
+            </Button>
+          ))}
+        </div>
       </div>
 
-      {/* Date Range Filter */}
+      {/* DATE FILTER */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium">Start Date</label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="mt-2 h-10"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="text-sm font-medium">End Date</label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="mt-2 h-10" />
-            </div>
-            <div className="flex items-end">
-              <Button className="w-full">Apply Filter</Button>
-            </div>
-          </div>
+        <CardContent className="grid md:grid-cols-3 gap-4 pt-6">
+          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <Button onClick={loadReport}>Apply</Button>
         </CardContent>
       </Card>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ================= DASHBOARD MINI WIDGETS ================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Widget title="Sales" value={summary?.sales} />
+        <Widget title="Profit" value={summary?.profit} highlight />
+        <Widget title="Invoices" value={summary?.invoices} />
+        <Widget title="Products Sold" value={summary?.products_sold} />
+        <Widget
+          title="Margin"
+          value={
+            summary
+              ? Math.round((summary.profit / summary.sales) * 100)
+              : 0
+          }
+          suffix="%"
+        />
+      </div>
+
+      {/* ================= CHARTS ================= */}
+      <div className="grid lg:grid-cols-2 gap-4">
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+          <CardHeader>
+            <CardTitle>Sales Trend</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold">₹{totalSales.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">{reportData.length} days</p>
+          <CardContent className="h-[260px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <XAxis dataKey="label" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="sales" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Purchase Cost</CardTitle>
+          <CardHeader>
+            <CardTitle>Profit Trend</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold">₹{totalCost.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {((totalCost / totalSales) * 100).toFixed(1)}% of sales
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Profit</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold text-accent">₹{totalProfit.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">{profitMargin}% margin</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Avg Daily Profit</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold">
-              ₹{Math.round(totalProfit / reportData.length).toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Per day</p>
+          <CardContent className="h-[260px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <XAxis dataKey="label" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="profit" />
+              </BarChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
-      {/* Daily Report Table */}
+      {/* ================= TOP PRODUCTS ================= */}
       <Card>
-        <CardHeader>
-          <CardTitle>Daily Report</CardTitle>
-          <CardDescription>Daily sales, costs, and profit</CardDescription>
+        <CardHeader className="flex justify-between items-center">
+          <CardTitle>Top Products</CardTitle>
+          <Input
+            placeholder="Search product…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(1)
+            }}
+            className="w-60"
+          />
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Sales</TableHead>
-                  <TableHead className="text-right">Purchase Cost</TableHead>
-                  <TableHead className="text-right">Profit</TableHead>
-                  <TableHead className="text-right">Margin %</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reportData.map((row) => (
-                  <TableRow key={row.date}>
-                    <TableCell className="font-medium">{row.date}</TableCell>
-                    <TableCell className="text-right">₹{row.sales.toLocaleString()}</TableCell>
-                    <TableCell className="text-right">₹{row.cost.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-medium text-accent">₹{row.profit.toLocaleString()}</TableCell>
-                    <TableCell className="text-right">{((row.profit / row.sales) * 100).toFixed(1)}%</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Top Selling Products */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Top Selling Products</CardTitle>
-            <CardDescription>Best performing items</CardDescription>
-          </div>
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
-        </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead className="text-right">Units Sold</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead className="text-right">Units</TableHead>
+                <TableHead className="text-right">Revenue</TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {paginated.map((p) => (
+                <TableRow key={`${p.id}-${p.name}`}>
+                  <TableCell>{p.name}</TableCell>
+                  <TableCell className="text-right">{p.units_sold}</TableCell>
+                  <TableCell className="text-right font-medium">
+                    ₹{p.revenue.toLocaleString()}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topProducts.map((product) => (
-                  <TableRow key={product.id}>
-                    <TableCell className="font-medium">{product.name}</TableCell>
-                    <TableCell className="text-right">{product.sold}</TableCell>
-                    <TableCell className="text-right font-medium">₹{product.revenue.toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
+
+          {totalPages > 1 && (
+            <div className="flex justify-between items-center mt-4">
+              <span className="text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page === 1}
+                  onClick={() => setPage(page - 1)}
+                >
+                  Prev
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page === totalPages}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+/* ================= SMALL COMPONENTS ================= */
+
+function Widget({
+  title,
+  value,
+  highlight,
+  suffix = "",
+}: {
+  title: string
+  value?: number
+  highlight?: boolean
+  suffix?: string
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xs">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div
+          className={`text-2xl font-bold ${
+            highlight ? "text-green-600" : ""
+          }`}
+        >
+          {value?.toLocaleString() ?? 0}
+          {suffix}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
